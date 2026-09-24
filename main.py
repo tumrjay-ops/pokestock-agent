@@ -12,7 +12,7 @@ from bs4 import BeautifulSoup
 ROOT = Path(__file__).resolve().parent
 WATCH = json.loads((ROOT / "watchlist.json").read_text())
 STATE_FILE = ROOT / "state.json"
-USER_AGENT = "Mozilla/5.0 (compatible; PokeStockAgent/1.1; personal stock monitor)"
+USER_AGENT = "Mozilla/5.0 (compatible; PokeStockAgent/1.2; personal stock monitor)"
 
 AVAILABLE_TERMS = [
     "add to cart", "buy now", "preorder", "pre-order", "order pickup",
@@ -39,7 +39,6 @@ def normalize_text(html):
 
 
 def extract_price(html, text):
-    # Visible price first.
     visible = re.findall(r"\$(\d{1,4}(?:\.\d{2})?)", text)
     candidates = []
     for raw in visible:
@@ -48,7 +47,6 @@ def extract_price(html, text):
         except ValueError:
             pass
 
-    # Common structured-data formats used by retail product pages.
     patterns = [
         r'"price"\s*:\s*"?(\d{1,4}(?:\.\d{1,2})?)"?',
         r'"salePrice"\s*:\s*"?(\d{1,4}(?:\.\d{1,2})?)"?',
@@ -61,7 +59,6 @@ def extract_price(html, text):
             except ValueError:
                 pass
 
-    # Return the lowest plausible retail price on the product page.
     candidates = [p for p in candidates if 1.0 <= p <= 1000.0]
     return min(candidates) if candidates else None
 
@@ -77,8 +74,38 @@ def classify(text):
     }
 
 
+def send_ntfy(payload):
+    topic = os.getenv("NTFY_TOPIC", "").strip()
+    if not topic:
+        return
+    price = payload.get("price_seen")
+    price_text = f"${price:.2f}" if isinstance(price, (int, float)) else "precio retail"
+    title = f"🔥 {payload['retailer']} Pokémon disponible"
+    message = (
+        f"{payload['product']} — {price_text} — cantidad {payload['qty_desired']}\n"
+        f"{payload['url']}"
+    )
+    try:
+        requests.post(
+            "https://ntfy.sh",
+            json={
+                "topic": topic,
+                "title": title,
+                "message": message,
+                "priority": 5,
+                "click": payload["url"],
+                "tags": ["rotating_light", "shopping_cart"],
+            },
+            timeout=10,
+        ).raise_for_status()
+        print("NTFY delivered", flush=True)
+    except Exception as e:
+        print(f"NTFY error: {e}", flush=True)
+
+
 def notify(payload):
     print("ALERT", json.dumps(payload, ensure_ascii=False), flush=True)
+    send_ntfy(payload)
     webhook = os.getenv("ALERT_WEBHOOK_URL", "").strip()
     if webhook:
         try:
@@ -100,9 +127,6 @@ def check_product(session, product, state):
         status = classify(text)
         price = extract_price(r.text, text)
         blocked = any(x in text for x in BLOCK_TERMS)
-
-        # Never alert from a generic page-shell signal alone. A real alert must
-        # have a detected price at or below the configured first-party max.
         price_ok = price is not None and price <= float(product["max_price"]) + 0.01
         purchasable = status["available"] and price_ok and not blocked
 
