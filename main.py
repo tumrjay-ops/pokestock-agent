@@ -12,13 +12,14 @@ from bs4 import BeautifulSoup
 ROOT = Path(__file__).resolve().parent
 WATCH = json.loads((ROOT / "watchlist.json").read_text())
 STATE_FILE = ROOT / "state.json"
-USER_AGENT = "Mozilla/5.0 (compatible; PokeStockAgent/1.0; personal stock monitor)"
+USER_AGENT = "Mozilla/5.0 (compatible; PokeStockAgent/1.1; personal stock monitor)"
 
 AVAILABLE_TERMS = [
     "add to cart", "buy now", "preorder", "pre-order", "order pickup",
     "pickup", "shipping available", "ship it", "available for shipping"
 ]
 UNAVAILABLE_TERMS = ["coming soon", "sold out", "unavailable", "out of stock"]
+BLOCK_TERMS = ["captcha", "access denied", "verify you are human"]
 
 
 def load_state():
@@ -37,18 +38,42 @@ def normalize_text(html):
     return " ".join(soup.stripped_strings).lower()
 
 
-def extract_price(text):
-    m = re.search(r"\$(\d{1,4}(?:\.\d{2})?)", text)
-    return float(m.group(1)) if m else None
+def extract_price(html, text):
+    # Visible price first.
+    visible = re.findall(r"\$(\d{1,4}(?:\.\d{2})?)", text)
+    candidates = []
+    for raw in visible:
+        try:
+            candidates.append(float(raw))
+        except ValueError:
+            pass
+
+    # Common structured-data formats used by retail product pages.
+    patterns = [
+        r'"price"\s*:\s*"?(\d{1,4}(?:\.\d{1,2})?)"?',
+        r'"salePrice"\s*:\s*"?(\d{1,4}(?:\.\d{1,2})?)"?',
+        r'"current[_A-Za-z]*price"\s*:\s*"?\$?(\d{1,4}(?:\.\d{1,2})?)"?',
+    ]
+    for pattern in patterns:
+        for raw in re.findall(pattern, html, flags=re.I):
+            try:
+                candidates.append(float(raw))
+            except ValueError:
+                pass
+
+    # Return the lowest plausible retail price on the product page.
+    candidates = [p for p in candidates if 1.0 <= p <= 1000.0]
+    return min(candidates) if candidates else None
 
 
 def classify(text):
     found_available = [t for t in AVAILABLE_TERMS if t in text]
     found_unavailable = [t for t in UNAVAILABLE_TERMS if t in text]
+    hard_unavailable = any(t in found_unavailable for t in ["coming soon", "sold out", "out of stock"])
     return {
         "available_signals": found_available,
         "unavailable_signals": found_unavailable,
-        "available": bool(found_available) and not ("coming soon" in found_unavailable or "sold out" in found_unavailable),
+        "available": bool(found_available) and not hard_unavailable,
     }
 
 
@@ -73,16 +98,21 @@ def check_product(session, product, state):
 
         text = normalize_text(r.text)
         status = classify(text)
-        price = extract_price(text)
-        price_ok = price is None or price <= float(product["max_price"]) + 0.01
-        purchasable = status["available"] and price_ok
+        price = extract_price(r.text, text)
+        blocked = any(x in text for x in BLOCK_TERMS)
+
+        # Never alert from a generic page-shell signal alone. A real alert must
+        # have a detected price at or below the configured first-party max.
+        price_ok = price is not None and price <= float(product["max_price"]) + 0.01
+        purchasable = status["available"] and price_ok and not blocked
 
         fingerprint_obj = {
             "http": status_code,
             "price": price,
             "available": purchasable,
             "signals": status["available_signals"],
-            "blocked": any(x in text for x in ["captcha", "access denied", "verify you are human"]),
+            "unavailable_signals": status["unavailable_signals"],
+            "blocked": blocked,
         }
         fp = hashlib.sha256(json.dumps(fingerprint_obj, sort_keys=True).encode()).hexdigest()
         old_fp = state.get(key, {}).get("fingerprint")
