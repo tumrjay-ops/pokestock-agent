@@ -12,7 +12,7 @@ from bs4 import BeautifulSoup
 ROOT = Path(__file__).resolve().parent
 WATCH = json.loads((ROOT / "watchlist.json").read_text())
 STATE_FILE = ROOT / "state.json"
-USER_AGENT = "Mozilla/5.0 (compatible; PokeStockAgent/1.3; personal stock monitor)"
+USER_AGENT = "Mozilla/5.0 (compatible; PokeStockAgent/1.4; personal stock monitor)"
 
 AVAILABLE_TERMS = [
     "add to cart", "buy now", "preorder", "pre-order", "order pickup",
@@ -150,7 +150,9 @@ def check_product(session, product, state):
         status = classify(text)
         price = extract_price(r.text, text)
         blocked = any(x in text for x in BLOCK_TERMS)
-        price_ok = price is not None and price <= float(product["max_price"]) + 0.01
+        max_price = float(product["max_price"])
+        min_plausible_price = float(product.get("min_price", max_price * 0.60))
+        price_ok = price is not None and min_plausible_price <= price <= max_price + 0.01
         purchasable = status["available"] and price_ok and not blocked
 
         fingerprint_obj = {
