@@ -37,7 +37,14 @@
       "retailer": "Target",
       "name": "Pokémon TCG 30th Celebration Booster Bundle",
       "tcin": "1011407490",
-      "qty": 2,
+      "qty": 4,
+      "max_qty": 4,
+      "respect_retailer_limit": true,
+      "priority": "critical",
+      "store": {
+        "name": "Target Salem Broadway",
+        "address": "203 S Broadway, Salem, NH"
+      },
       "max_price": 31.99,
       "url": "https://www.target.com/p/-/A-1011407490"
     }
