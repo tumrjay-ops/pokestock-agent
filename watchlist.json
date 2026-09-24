@@ -1,0 +1,45 @@
+{
+  "poll_seconds": 60,
+  "products": [
+    {
+      "retailer": "Best Buy",
+      "name": "Pokémon TCG 30th Celebration Booster Bundle",
+      "sku": "6685573",
+      "qty": 2,
+      "max_price": 26.94,
+      "url": "https://www.bestbuy.com/site/searchpage.jsp?st=6685573"
+    },
+    {
+      "retailer": "Best Buy",
+      "name": "Pokémon TCG 30th Celebration Elite Trainer Box",
+      "sku": "6685559",
+      "qty": 2,
+      "max_price": 49.99,
+      "url": "https://www.bestbuy.com/site/searchpage.jsp?st=6685559"
+    },
+    {
+      "retailer": "Best Buy",
+      "name": "Pokémon TCG 30th Celebration Ultra-Premium Collection Day or Night",
+      "sku": "6685563",
+      "qty": 1,
+      "max_price": 179.99,
+      "url": "https://www.bestbuy.com/product/pokemon-trading-card-game-30th-celebration-ultra-premium-collection-day-or-night-1-ultra-premium-collection-per-order-styles-may-vary/JJG2TL8254/sku/6685563"
+    },
+    {
+      "retailer": "Best Buy",
+      "name": "Pokémon TCG 30th Celebration Poster Collection",
+      "sku": "6685565",
+      "qty": 2,
+      "max_price": 14.99,
+      "url": "https://www.bestbuy.com/site/searchpage.jsp?st=6685565"
+    },
+    {
+      "retailer": "Target",
+      "name": "Pokémon TCG 30th Celebration Booster Bundle",
+      "tcin": "1011407490",
+      "qty": 2,
+      "max_price": 31.99,
+      "url": "https://www.target.com/p/-/A-1011407490"
+    }
+  ]
+}
