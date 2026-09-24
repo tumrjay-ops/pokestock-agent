@@ -12,7 +12,7 @@ from bs4 import BeautifulSoup
 ROOT = Path(__file__).resolve().parent
 WATCH = json.loads((ROOT / "watchlist.json").read_text())
 STATE_FILE = ROOT / "state.json"
-USER_AGENT = "Mozilla/5.0 (compatible; PokeStockAgent/1.2; personal stock monitor)"
+USER_AGENT = "Mozilla/5.0 (compatible; PokeStockAgent/1.3; personal stock monitor)"
 
 AVAILABLE_TERMS = [
     "add to cart", "buy now", "preorder", "pre-order", "order pickup",
@@ -74,24 +74,26 @@ def classify(text):
     }
 
 
+def alert_text(payload):
+    price = payload.get("price_seen")
+    price_text = f"${price:.2f}" if isinstance(price, (int, float)) else "precio retail"
+    return (
+        f"{payload['retailer']}: {payload['product']} — {price_text} — "
+        f"cantidad {payload['qty_desired']} — {payload['url']}"
+    )
+
+
 def send_ntfy(payload):
     topic = os.getenv("NTFY_TOPIC", "").strip()
     if not topic:
         return
-    price = payload.get("price_seen")
-    price_text = f"${price:.2f}" if isinstance(price, (int, float)) else "precio retail"
-    title = f"🔥 {payload['retailer']} Pokémon disponible"
-    message = (
-        f"{payload['product']} — {price_text} — cantidad {payload['qty_desired']}\n"
-        f"{payload['url']}"
-    )
     try:
         requests.post(
             "https://ntfy.sh",
             json={
                 "topic": topic,
-                "title": title,
-                "message": message,
+                "title": f"🔥 {payload['retailer']} Pokémon disponible",
+                "message": alert_text(payload),
                 "priority": 5,
                 "click": payload["url"],
                 "tags": ["rotating_light", "shopping_cart"],
@@ -103,9 +105,30 @@ def send_ntfy(payload):
         print(f"NTFY error: {e}", flush=True)
 
 
+def send_twilio_sms(payload):
+    sid = os.getenv("TWILIO_ACCOUNT_SID", "").strip()
+    token = os.getenv("TWILIO_AUTH_TOKEN", "").strip()
+    from_number = os.getenv("TWILIO_FROM_NUMBER", "").strip()
+    to_number = os.getenv("SMS_TO_NUMBER", "").strip()
+    if not all([sid, token, from_number, to_number]):
+        return
+    try:
+        r = requests.post(
+            f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json",
+            data={"From": from_number, "To": to_number, "Body": alert_text(payload)},
+            auth=(sid, token),
+            timeout=10,
+        )
+        r.raise_for_status()
+        print("SMS delivered", flush=True)
+    except Exception as e:
+        print(f"SMS error: {e}", flush=True)
+
+
 def notify(payload):
     print("ALERT", json.dumps(payload, ensure_ascii=False), flush=True)
     send_ntfy(payload)
+    send_twilio_sms(payload)
     webhook = os.getenv("ALERT_WEBHOOK_URL", "").strip()
     if webhook:
         try:
